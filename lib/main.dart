@@ -1,3 +1,4 @@
+import 'screens/client_request_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -262,3 +263,8 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
+//lo que habria que rremplazar pero no se donde (YO CREO VA EN LAS 248):
+// Si el usuario es cliente, cargamos la pantalla de solicitud directamente:
+//if (!isDriver) {
+//  return const ClientRequestScreen();
+//}
