@@ -1,0 +1,15 @@
+{
+  "version": "2",
+  "projectNumber": "695231965683",
+  "projectId": "aguapp-4f293",
+  "appId": "1:695231965683:web:4be5568c6e32b5f40c8a86",
+  "realtimeDatabaseInstanceUri": "https://aguapp-4f293-default-rtdb.firebaseio.com",
+  "realtimeDatabaseUrl": "",
+  "storageBucket": "aguapp-4f293.firebasestorage.app",
+  "locationId": "",
+  "apiKey": "AIzaSyAJGAZh25LdhKJAUdSYYaxygkNyFDoHguE",
+  "authDomain": "aguapp-4f293.firebaseapp.com",
+  "messagingSenderId": "695231965683",
+  "measurementId": "G-PKFSGK8JV3",
+  "recaptchaSiteKey": ""
+}
