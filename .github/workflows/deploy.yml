@@ -1,0 +1,27 @@
+name: Deploy AguAp to Firebase hosting
+
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps: 
+      - name: checkout repository
+        uses: actions/checkout@v3
+      - name: Set up flutter
+        uses: subosito/flutter-action@v2
+        with:
+            channel: stable
+      - name: Install Dependencies
+        run: flutter pub get 
+      - name: Build web
+        run: flutter build web --release
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/firebase-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_AGUA_APP }}'
+          channelId: live
+          projectId: AguApp
