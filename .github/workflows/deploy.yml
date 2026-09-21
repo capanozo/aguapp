@@ -24,4 +24,4 @@ jobs:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_AGUA_APP }}'
           channelId: live
-          projectId: AguApp
+          projectId: aguapp-4f293
