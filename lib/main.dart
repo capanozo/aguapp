@@ -14,7 +14,7 @@ void main() async {
       authDomain: "aguapp-4f293.firebaseapp.com",
       projectId: "aguapp-4f293",
       storageBucket: "aguapp-4f293.appspot.com",
-      messaging1: "695231965683",
+      messagingSenderId: "695231965683",
       appId: "1:695231965683:web:4be5568c6e32b5f40c8a86",
     ),
   );
