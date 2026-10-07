@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -13,7 +14,7 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
   int _selectedLiters = 2000;
   bool _isImmediate = true;
   DateTime _scheduledDate = DateTime.now().add(const Duration(hours: 2));
-  String _addressText = "Ñuñoa, Santiago (Ubicación actual)";
+  String _addressText = "Ñuñoa, Santiago (Ubicación de entrega)";
   bool _isSubmitting = false;
 
   Future<void> _createOrder() async {
@@ -29,12 +30,14 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
         'actualDeliveredLiters': _selectedLiters,
         'deliveryLocation': {
           'addressText': _addressText,
-          'lat': -33.4560, // Coordenadas base
+          'lat': -33.4560,
           'lng': -70.6480,
         },
         'isImmediate': _isImmediate,
-        'scheduledFor': _isImmediate ? DateTime.now().toIso8601String() : _scheduledDate.toIso8601String(),
-        'status': 'PENDING', // PENDING -> OFFERED -> ACCEPTED -> IN_TRANSIT -> COMPLETED
+        'scheduledFor': _isImmediate 
+            ? DateTime.now().toIso8601String() 
+            : _scheduledDate.toIso8601String(),
+        'status': 'PENDING', // PENDING -> ACCEPTED -> COMPLETED
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -58,7 +61,7 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Solicitar Agua Potable'),
+        title: const Text('AguApp - Solicitar Agua'),
         actions: [
           IconButton(
             icon: const Icon(Icons.exit_to_app),
@@ -74,35 +77,26 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Dirección de entrega
                 const Text("Lugar de Entrega", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 8),
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.location_on, color: Colors.blueAccent),
                     title: Text(_addressText),
-                    trailing: TextButton(
-                      onPressed: () {
-                        // Conexión futura a Google Places
-                      },
-                      child: const Text("Cambiar"),
-                    ),
                   ),
                 ),
                 const SizedBox(height: 24),
 
-                // Selector de Volumen
-                const Text("Cantidad de Agua", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 8),
+                const Text("Cantidad de Agua (Litros)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [2000, 5000, 10000].map((liters) {
                     final isSelected = _selectedLiters == liters;
                     return ChoiceChip(
-                      label: Text("$liters L"),
+                      label: Text("$liters L", style: TextStyle(color: isSelected ? Colors.white : Colors.black87)),
                       selected: isSelected,
                       selectedColor: Colors.blueAccent,
-                      labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black87),
                       onSelected: (selected) {
                         if (selected) setState(() => _selectedLiters = liters);
                       },
@@ -111,51 +105,22 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Programación de Despacho
                 const Text("¿Cuándo lo necesitas?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 RadioListTile<bool>(
-                  title: const Text("Lo antes posible (Ahora)"),
+                  title: const Text("Lo antes posible"),
                   value: true,
                   groupValue: _isImmediate,
                   onChanged: (val) => setState(() => _isImmediate = val!),
                 ),
                 RadioListTile<bool>(
-                  title: const Text("Programar para fecha/hora futura"),
+                  title: const Text("Programar entrega"),
                   value: false,
                   groupValue: _isImmediate,
                   onChanged: (val) => setState(() => _isImmediate = val!),
                 ),
-                if (!_isImmediate)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 16.0, bottom: 16.0),
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.calendar_today),
-                      label: Text("${_scheduledDate.day}/${_scheduledDate.month} a las ${_scheduledDate.hour}:${_scheduledDate.minute.toString().padLeft(2, '0')}"),
-                      onPressed: () async {
-                        final date = await showDatePicker(
-                          context: context,
-                          initialDate: DateTime.now(),
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime.now().add(const Duration(days: 30)),
-                        );
-                        if (date != null) {
-                          final time = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.now(),
-                          );
-                          if (time != null) {
-                            setState(() {
-                              _scheduledDate = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-                            });
-                          }
-                        }
-                      },
-                    ),
-                  ),
 
                 const SizedBox(height: 32),
 
-                // Botón Principal
                 SizedBox(
                   width: double.infinity,
                   height: 52,
@@ -175,4 +140,3 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
     );
   }
 }
-

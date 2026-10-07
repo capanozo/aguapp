@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'screens/client_request_screen.dart';
+import 'screens/driver_panel_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -256,22 +258,30 @@ class HomeScreen extends StatelessWidget {
           if (!snapshot.hasData || !snapshot.data!.exists) {
             return const Center(child: Text("Perfil no encontrado."));
           }
+// Dentro del FutureBuilder de HomeScreen:
+final userData = snapshot.data!.data() as Map<String, dynamic>;
+final bool isDriver = userData['role'] == 'driver';
 
-          final userData = snapshot.data!.data() as Map<String, dynamic>;
-          final bool isDriver = userData['role'] == 'driver';
+if (isDriver) {
+  return const DriverPanelScreen();
+} else {
+  return const ClientRequestScreen();
+}
+ //         final userData = snapshot.data!.data() as Map<String, dynamic>;
+ //         final bool isDriver = userData['role'] == 'driver';
 
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(isDriver ? Icons.local_shipping : Icons.water_drop, size: 64, color: Colors.blueAccent),
-                const SizedBox(height: 16),
-                Text("¡Hola, ${userData['name']}!", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                Text("Perfil: ${isDriver ? 'Chofer de Camión Aljibe' : 'Cliente'}", style: const TextStyle(color: Colors.grey)),
-                if (isDriver) Text("Capacidad: ${userData['truckCapacityLiters']} Litros"),
-              ],
-            ),
-          );
+ //         return Center(
+ //           child: Column(
+ //             mainAxisAlignment: MainAxisAlignment.center,
+ //             children: [
+ //               Icon(isDriver ? Icons.local_shipping : Icons.water_drop, size: 64, color: Colors.blueAccent),
+ //               const SizedBox(height: 16),
+ //               Text("¡Hola, ${userData['name']}!", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+ //               Text("Perfil: ${isDriver ? 'Chofer de Camión Aljibe' : 'Cliente'}", style: const TextStyle(color: Colors.grey)),
+ //               if (isDriver) Text("Capacidad: ${userData['truckCapacityLiters']} Litros"),
+ //             ],
+ //           ),
+ //         );
         },
       ),
     );
