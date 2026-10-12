@@ -11,16 +11,8 @@ import 'screens/admin_dashboard_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: "TU_API_KEY_AQUI", // Conserva tus credenciales Web
-      authDomain: "aguapp-4f293.firebaseapp.com",
-      projectId: "aguapp-4f293",
-      storageBucket: "aguapp-4f293.appspot.com",
-      messagingSenderId: "TU_MESSAGING_SENDER_ID",
-      appId: "TU_APP_ID",
-    ),
-  );
+  // Inicialización limpia de Firebase (detecta la configuración del entorno automáticamente)
+  await Firebase.initializeApp();
 
   runApp(const AguApp());
 }
@@ -57,7 +49,7 @@ class AuthGate extends StatelessWidget {
           );
         }
 
-        // Si no hay sesión activa, muestra la pantalla de inicio de sesión
+        // Si no hay sesión activa, muestra el formulario de inicio de sesión
         if (!snapshot.hasData) {
           return const LoginScreen();
         }
@@ -80,7 +72,7 @@ class AuthGate extends StatelessWidget {
             final userData = userSnapshot.data!.data() as Map<String, dynamic>;
             final String role = userData['role'] ?? 'client';
 
-            // Retornamos directamente el widget de cada rol SIN envolverlo en otro Scaffold/AppBar
+            // Retorna directamente la pantalla del rol sin AppBar duplicado
             if (role == 'admin') {
               return const AdminDashboardScreen();
             } else if (role == 'driver') {
@@ -95,7 +87,7 @@ class AuthGate extends StatelessWidget {
   }
 }
 
-/// Pantalla de Autenticación Unificada (Login / Registro)
+/// Pantalla de Autenticación (Login / Registro)
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
 
