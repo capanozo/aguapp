@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'order_history_screen.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../widgets/map_picker_widget.dart';
+
+LatLng _selectedLatLng = const LatLng(-33.4560, -70.6480);
+String _addressText = "Ubicación fijada en el mapa";
 
 class ClientRequestScreen extends StatefulWidget {
   const ClientRequestScreen({Key? key}) : super(key: key);
@@ -28,11 +33,13 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
         'clientId': user.uid,
         'requestedLiters': _selectedLiters,
         'actualDeliveredLiters': _selectedLiters,
+        
         'deliveryLocation': {
           'addressText': _addressText,
-          'lat': -33.4560,
-          'lng': -70.6480,
+          'lat': _selectedLatLng.latitude,
+          'lng': _selectedLatLng.longitude,
         },
+        
         'isImmediate': _isImmediate,
         'scheduledFor': _isImmediate
             ? DateTime.now().toIso8601String()
@@ -245,6 +252,24 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const Text("Ubicación del Estanque / Punto de Entrega", 
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              MapPickerWidget(
+                initialPosition: _selectedLatLng,
+                onPositionSelected: (position, address) {
+                  setState(() {
+                    _selectedLatLng = position;
+                    _addressText = address;
+                  });
+                },
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "Dirección: $_addressText",
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              ),
+ /*>             
               const Text("Lugar de Entrega", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               Card(
@@ -254,7 +279,7 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-
+<<*/
               const Text("Cantidad de Agua (Litros)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 12),
               Row(

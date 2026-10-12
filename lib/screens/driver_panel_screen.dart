@@ -139,7 +139,118 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
                       return ListView.builder(
                         padding: const EdgeInsets.all(16),
                         itemCount: visibleOrders.length,
+                        // ... dentro de tu ListView.builder en DriverPanelScreen
                         itemBuilder: (context, index) {
+                          final orderData = visibleOrders[index].data() as Map<String, dynamic>;
+                          final orderId = visibleOrders[index].id;
+                          final status = orderData['status'] ?? 'PENDING';
+                          final requestedLiters = orderData['requestedLiters'] ?? 2000;
+                          final isMyAcceptedOrder = status == 'ACCEPTED';
+
+                          // Coordenadas fijadas por el cliente en el mapa (H8)
+                          final double lat = orderData['deliveryLocation']?['lat'] ?? -33.4560;
+                          final double lng = orderData['deliveryLocation']?['lng'] ?? -70.6480;
+
+                          return Card(
+                            elevation: 4,
+                            margin: const EdgeInsets.only(bottom: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Datos del Pedido
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Chip(
+                                        avatar: const Icon(Icons.water_drop, color: Colors.white, size: 16),
+                                        label: Text("$requestedLiters L", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                        backgroundColor: Colors.blueAccent,
+                                      ),
+                                      Text(
+                                        isMyAcceptedOrder ? "EN CURSO" : "DISPONIBLE",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: isMyAcceptedOrder ? Colors.blue.shade800 : Colors.orange.shade800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text("Dirección: ${orderData['deliveryLocation']?['addressText'] ?? 'N/I'}"),
+                                  const SizedBox(height: 16),
+
+                                  // -----------------------------------------------------------------
+                                  // BLOQUE DE ACCIONES SEGÚN ESTADO (AQUÍ VA LA NAVEGACIÓN GPS)
+                                  // -----------------------------------------------------------------
+                                  if (status == 'PENDING')
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 48,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.green,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        ),
+                                        onPressed: () => _acceptOrder(orderId, driverUid),
+                                        child: const Text("Tomar Pedido", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                                      ),
+                                    )
+                                  else if (isMyAcceptedOrder) ...[
+                                    // 1. BOTÓN DE NAVEGACIÓN GPS (Abre Google Maps con el pin del estanque)
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 48,
+                                      child: ElevatedButton.icon(
+                                        icon: const Icon(Icons.navigation_outlined, color: Colors.white),
+                                        label: const Text("Navegar con GPS", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.blue.shade900,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        ),
+                                        onPressed: () async {
+                                          // Genera el enlace universal a Google Maps con las coordenadas del cliente
+                                          final Uri googleMapsUrl = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$lat,$lng");
+                                          // Lógica para lanzar la URL en el navegador/app de mapas
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+
+                                    // 2. BOTÓN DE FINALIZAR Y COBRAR (H3)
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 48,
+                                      child: ElevatedButton.icon(
+                                        icon: const Icon(Icons.check_circle_outline, color: Colors.white),
+                                        label: const Text("Finalizar y Cobrar", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.green.shade700,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        ),
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => OrderCompletionScreen(
+                                                orderId: orderId,
+                                                requestedLiters: requestedLiters,
+                                                clientName: "Cliente AguApp",
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            );
+                          },
+
+/*                        itemBuilder: (context, index) {
                           final orderData = visibleOrders[index].data() as Map<String, dynamic>;
                           final orderId = visibleOrders[index].id;
                           final status = orderData['status'] ?? 'PENDING';
@@ -246,6 +357,10 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
                               ),
                             ),
                           );
+*/
+
+
+
                         },
                       );
                     },
