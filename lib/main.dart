@@ -11,8 +11,17 @@ import 'screens/admin_dashboard_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Inicialización limpia de Firebase (detecta la configuración del entorno automáticamente)
-  await Firebase.initializeApp();
+  // Inicialización de Firebase optimizada para la Web
+  await Firebase.initializeApp(
+    options: const FirebaseOptions(
+      apiKey: "AIzaSyAJGAZh25LdhKJAUdSYYaxygkNyFDoHguE", // Reemplaza con tus claves de Firebase Web
+      authDomain: "aguapp-4f293.firebaseapp.com",
+      projectId: "aguapp-4f293",
+      storageBucket: "aguapp-4f293.appspot.com",
+      messagingSenderId: "695231965683",
+      appId: "1:695231965683:web:4be5568c6e32b5f40c8a86",
+    ),
+  );
 
   runApp(const AguApp());
 }
