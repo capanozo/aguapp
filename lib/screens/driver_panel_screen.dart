@@ -247,6 +247,7 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
                                   ],
                                 ],
                               ),
+                            ),
                             );
                           },
 
