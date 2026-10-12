@@ -70,65 +70,65 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
                       }
 
                       return ListView.builder(
-  padding: const EdgeInsets.all(16),
-  itemCount: docs.length,
-  itemBuilder: (context, index) {
-    final orderData = docs[index].data() as Map<String, dynamic>;
-    final orderId = docs[index].id;
-    final status = orderData['status'] ?? 'PENDING';
+                        padding: const EdgeInsets.all(16),
+                        itemCount: docs.length,
+                        itemBuilder: (context, index) {
+                          final orderData = docs[index].data() as Map<String, dynamic>;
+                          final orderId = docs[index].id;
+                          final status = orderData['status'] ?? 'PENDING';
 
-    return Card(
-      elevation: 3,
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Chip(
-                  avatar: const Icon(Icons.water_drop, color: Colors.white, size: 16),
-                  label: Text("${orderData['requestedLiters']} L", style: const TextStyle(color: Colors.white)),
-                  backgroundColor: Colors.blueAccent,
-                ),
-                Text(
-                  "Estado: $status",
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text("Dirección: ${orderData['deliveryLocation']?['addressText'] ?? 'N/I'}"),
-            const SizedBox(height: 16),
+                          return Card(
+                            elevation: 3,
+                            margin: const EdgeInsets.only(bottom: 16),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Chip(
+                                        avatar: const Icon(Icons.water_drop, color: Colors.white, size: 16),
+                                        label: Text("${orderData['requestedLiters']} L", style: const TextStyle(color: Colors.white)),
+                                        backgroundColor: Colors.blueAccent,
+                                      ),
+                                      Text(
+                                        "Estado: $status",
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text("Dirección: ${orderData['deliveryLocation']?['addressText'] ?? 'N/I'}"),
+                                  const SizedBox(height: 16),
 
-            // Acción según el estado del pedido
-            if (status == 'PENDING') ...[
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                  onPressed: () => _acceptOrder(orderId, driverUid),
-                  child: const Text("Tomar Pedido", style: TextStyle(color: Colors.white)),
-                ),
-              ),
-            ] else if (status == 'ACCEPTED') ...[
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.check_circle_outline, color: Colors.white),
-                  label: const Text("Finalizar y Cobrar", style: TextStyle(color: Colors.white)),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => OrderCompletionScreen(
-                          orderId: orderId,
-                          requestedLiters: orderData['requestedLiters'] ?? 2000,
-                          clientName: "Cliente AguApp",
-                        ),
+                                  // Acción según el estado del pedido
+                                  if (status == 'PENDING') ...[
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                                        onPressed: () => _acceptOrder(orderId, driverUid),
+                                        child: const Text("Tomar Pedido", style: TextStyle(color: Colors.white)),
+                                      ),
+                                    ),
+                                  ] else if (status == 'ACCEPTED') ...[
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        icon: const Icon(Icons.check_circle_outline, color: Colors.white),
+                                        label: const Text("Finalizar y Cobrar", style: TextStyle(color: Colors.white)),
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => OrderCompletionScreen(
+                                                orderId: orderId,
+                                                requestedLiters: orderData['requestedLiters'] ?? 2000,
+                                                clientName: "Cliente AguApp",
+),
                       ),
                     );
                   },
@@ -140,17 +140,7 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
       ),
     );
   },
-),
-                          );
-                        },
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
+)
 
   Future<void> _acceptOrder(String orderId, String? driverUid) async {
     if (driverUid == null) return;
