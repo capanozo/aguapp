@@ -1,6 +1,7 @@
- import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'order_completion_screen.dart';
 
 class DriverPanelScreen extends StatefulWidget {
   const DriverPanelScreen({Key? key}) : super(key: key);
@@ -142,3 +143,22 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
     }
   }
 }
+
+//agregamos boton 
+ElevatedButton.icon(
+  icon: const Icon(Icons.check_circle_outline, color: Colors.white),
+  label: const Text("Finalizar y Cobrar", style: TextStyle(color: Colors.white)),
+  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+  onPressed: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => OrderCompletionScreen(
+          orderId: orderId,
+          requestedLiters: orderData['requestedLiters'] ?? 2000,
+          clientName: "Cliente AguApp",
+        ),
+      ),
+    );
+  },
+)
