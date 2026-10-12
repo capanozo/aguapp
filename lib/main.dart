@@ -1,8 +1,9 @@
-import 'screens/client_request_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+// Importación de las pantallas principales del proyecto
 import 'screens/client_request_screen.dart';
 import 'screens/driver_panel_screen.dart';
 import 'screens/admin_dashboard_screen.dart';
@@ -10,21 +11,19 @@ import 'screens/admin_dashboard_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Inicialización de Firebase optimizada para la Web
   await Firebase.initializeApp(
     options: const FirebaseOptions(
-      apiKey: "AIzaSyAJGAZh25LdhKJAUdSYYaxygkNyFDoHguE", // Reemplaza con tus claves de Firebase Web
+      apiKey: "TU_API_KEY_AQUI", // Conserva tus credenciales Web
       authDomain: "aguapp-4f293.firebaseapp.com",
       projectId: "aguapp-4f293",
       storageBucket: "aguapp-4f293.appspot.com",
-      messagingSenderId: "695231965683",
-      appId: "1:695231965683:web:4be5568c6e32b5f40c8a86",
+      messagingSenderId: "TU_MESSAGING_SENDER_ID",
+      appId: "TU_APP_ID",
     ),
   );
 
   runApp(const AguApp());
 }
-
 
 class AguApp extends StatelessWidget {
   const AguApp({Key? key}) : super(key: key);
@@ -36,7 +35,6 @@ class AguApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
-        scaffoldBackgroundColor: Colors.grey[50],
         useMaterial3: true,
       ),
       home: const AuthGate(),
@@ -44,7 +42,7 @@ class AguApp extends StatelessWidget {
   }
 }
 
-// Control de flujo de autenticación en vivo
+/// Control de Acceso Principal (AuthGate)
 class AuthGate extends StatelessWidget {
   const AuthGate({Key? key}) : super(key: key);
 
@@ -54,72 +52,95 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
-        if (snapshot.hasData) {
-          return const HomeScreen();
+
+        // Si no hay sesión activa, muestra la pantalla de inicio de sesión
+        if (!snapshot.hasData) {
+          return const LoginScreen();
         }
-        return const AuthScreen();
+
+        // Si hay sesión activa, consulta el rol del usuario en Firestore
+        final user = snapshot.data!;
+        return FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+          builder: (context, userSnapshot) {
+            if (userSnapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
+              return const LoginScreen();
+            }
+
+            final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+            final String role = userData['role'] ?? 'client';
+
+            // Retornamos directamente el widget de cada rol SIN envolverlo en otro Scaffold/AppBar
+            if (role == 'admin') {
+              return const AdminDashboardScreen();
+            } else if (role == 'driver') {
+              return const DriverPanelScreen();
+            } else {
+              return const ClientRequestScreen();
+            }
+          },
+        );
       },
     );
   }
 }
 
-// Pantalla de Login / Registro
-class AuthScreen extends StatefulWidget {
-  const AuthScreen({Key? key}) : super(key: key);
+/// Pantalla de Autenticación Unificada (Login / Registro)
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({Key? key}) : super(key: key);
 
   @override
-  State<AuthScreen> createState() => _AuthScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _AuthScreenState extends State<AuthScreen> {
+class _LoginScreenState extends State<LoginScreen> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
+
   bool _isLogin = true;
+  String _role = 'client'; // 'client', 'driver', 'admin'
   bool _isLoading = false;
-  final _formKey = GlobalKey<FormState>();
 
-  String _email = '';
-  String _password = '';
-  String _name = '';
-  String _phone = '';
-  String _role = 'client'; // 'client' o 'driver'
-  int _truckCapacity = 2000;
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    _formKey.currentState!.save();
-
+  Future<void> _submitAuth() async {
     setState(() => _isLoading = true);
-
     try {
       if (_isLogin) {
-        // Iniciar Sesión
         await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: _email.trim(),
-          password: _password.trim(),
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
         );
       } else {
-        // Registrar Nuevo Usuario
-        UserCredential creds = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: _email.trim(),
-          password: _password.trim(),
+        final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
         );
 
-        // Guardar perfil detallado en Firestore
-        await FirebaseFirestore.instance.collection('users').doc(creds.user!.uid).set({
-          'uid': creds.user!.uid,
-          'name': _name.trim(),
-          'email': _email.trim(),
-          'phone': _phone.trim(),
-          'role': _role, // 'client' o 'driver'
-          'truckCapacityLiters': _role == 'driver' ? _truckCapacity : null,
+        await FirebaseFirestore.instance.collection('users').doc(credential.user!.uid).set({
+          'name': _nameController.text.trim(),
+          'email': _emailController.text.trim(),
+          'phone': _phoneController.text.trim(),
+          'role': _role,
           'createdAt': FieldValue.serverTimestamp(),
         });
       }
-    } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? 'Error de autenticación')),
-      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error de autenticación: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -130,154 +151,81 @@ class _AuthScreenState extends State<AuthScreen> {
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(28.0),
+          padding: const EdgeInsets.all(24.0),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(Icons.water_drop_rounded, size: 80, color: Colors.blueAccent),
-                  const SizedBox(height: 8),
-                  const Text(
-                    "AguApp",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.blueAccent),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _isLogin ? "Bienvenido de vuelta" : "Crea tu cuenta de servicio",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                  const SizedBox(height: 32),
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.water_drop, size: 72, color: Colors.blueAccent),
+                const SizedBox(height: 12),
+                const Text(
+                  'AguApp',
+                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.blueAccent),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _isLogin ? 'Ingresa a tu cuenta' : 'Crea tu cuenta de AguApp',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+                ),
+                const SizedBox(height: 32),
 
-                  if (!_isLogin) ...[
-                    TextFormField(
-                      decoration: const InputDecoration(labelText: "Nombre Completo", border: OutlineInputBorder()),
-                      validator: (v) => v == null || v.isEmpty ? "Ingresa tu nombre" : null,
-                      onSaved: (v) => _name = v!,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      decoration: const InputDecoration(labelText: "Teléfono (+569...)", border: OutlineInputBorder()),
-                      keyboardType: TextInputType.phone,
-                      validator: (v) => v == null || v.isEmpty ? "Ingresa tu teléfono" : null,
-                      onSaved: (v) => _phone = v!,
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: _role,
-                      decoration: const InputDecoration(labelText: "Tipo de Perfil", border: OutlineInputBorder()),
-                      items: const [
-                        DropdownMenuItem(value: 'client', child: Text("Cliente (Solicitar Agua)")),
-                        DropdownMenuItem(value: 'driver', child: Text("Chofer / Repartidor (Camión Aljibe)")),
-                      ],
-                      onChanged: (v) => setState(() => _role = v!),
-                    ),
-                    const SizedBox(height: 12),
-                    if (_role == 'driver') ...[
-                      TextFormField(
-                        initialValue: "2000",
-                        decoration: const InputDecoration(labelText: "Capacidad del Estanque (Litros)", border: OutlineInputBorder()),
-                        keyboardType: TextInputType.number,
-                        onSaved: (v) => _truckCapacity = int.tryParse(v ?? '2000') ?? 2000,
-                      ),
-                      const SizedBox(height: 12),
+                if (!_isLogin) ...[
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(labelText: 'Nombre Completo', border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _phoneController,
+                    decoration: const InputDecoration(labelText: 'Teléfono de Contacto', border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _role,
+                    decoration: const InputDecoration(labelText: 'Tipo de Usuario', border: OutlineInputBorder()),
+                    items: const [
+                      DropdownMenuItem(value: 'client', child: Text('Cliente (Solicitar Agua)')),
+                      DropdownMenuItem(value: 'driver', child: Text('Chofer (Camión Aljibe)')),
                     ],
-                  ],
-
-                  TextFormField(
-                    decoration: const InputDecoration(labelText: "Correo Electrónico", border: OutlineInputBorder()),
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (v) => v == null || !v.contains('@') ? "Correo inválido" : null,
-                    onSaved: (v) => _email = v!,
+                    onChanged: (val) => setState(() => _role = val!),
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    decoration: const InputDecoration(labelText: "Contraseña", border: OutlineInputBorder()),
-                    obscureText: true,
-                    validator: (v) => v == null || v.length < 6 ? "Mínimo 6 caracteres" : null,
-                    onSaved: (v) => _password = v!,
-                  ),
-                  const SizedBox(height: 24),
-
-                  _isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blueAccent,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          onPressed: _submit,
-                          child: Text(_isLogin ? "Iniciar Sesión" : "Crear Cuenta", style: const TextStyle(fontSize: 16, color: Colors.white)),
-                        ),
-                  
-                  TextButton(
-                    onPressed: () => setState(() => _isLogin = !_isLogin),
-                    child: Text(_isLogin ? "¿No tienes cuenta? Regístrate aquí" : "¿Ya tienes cuenta? Inicia sesión"),
-                  ),
+                  const SizedBox(height: 16),
                 ],
-              ),
+
+                TextField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(labelText: 'Correo Electrónico', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 24),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+                    onPressed: _isLoading ? null : _submitAuth,
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : Text(_isLogin ? 'Iniciar Sesión' : 'Registrarse', style: const TextStyle(fontSize: 16, color: Colors.white)),
+                  ),
+                ),
+
+                TextButton(
+                  onPressed: () => setState(() => _isLogin = !_isLogin),
+                  child: Text(_isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia Sesión'),
+                ),
+              ],
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-// Pantalla Principal (Placeholder según el Rol)
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("AguApp"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.exit_to_app),
-            onPressed: () => FirebaseAuth.instance.signOut(),
-          )
-        ],
-      ),
-      body: FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text("Perfil no encontrado."));
-          }
-          //por H5
-          final userData = snapshot.data!.data() as Map<String, dynamic>;
-          final String role = userData['role'] ?? 'admin';
-
-          if (role == 'admin') {
-            return const AdminDashboardScreen();
-          } else if (role == 'driver') {
-            return const DriverPanelScreen();
-          } else {
-            return const ClientRequestScreen();
-          }
-          // Dentro del FutureBuilder de HomeScreen:
-          //final userData = snapshot.data!.data() as Map<String, dynamic>;
-          //final bool isDriver = userData['role'] == 'driver';
-
-          //if (isDriver) {
-          //  return const DriverPanelScreen();
-          //} else {
-          //  return const ClientRequestScreen();
-          //}
-        },
       ),
     );
   }
