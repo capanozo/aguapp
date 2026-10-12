@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'order_history_screen.dart';
 
 class ClientRequestScreen extends StatefulWidget {
   const ClientRequestScreen({Key? key}) : super(key: key);
@@ -87,6 +88,18 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
         backgroundColor: Colors.blueAccent,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Historial de Pedidos',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const OrderHistoryScreen(userRole: 'client'),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.exit_to_app),
             onPressed: () => FirebaseAuth.instance.signOut(),

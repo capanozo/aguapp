@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'order_completion_screen.dart';
+import 'order_history_screen.dart';
 
 class DriverPanelScreen extends StatefulWidget {
   const DriverPanelScreen({Key? key}) : super(key: key);
@@ -45,6 +46,18 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
         title: const Text('AguApp - Chofer Camión Aljibe'),
         backgroundColor: _isOnline ? Colors.green : Colors.grey.shade700,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Historial de Servicios',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const OrderHistoryScreen(userRole: 'driver'),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.exit_to_app),
             onPressed: () => FirebaseAuth.instance.signOut(),
