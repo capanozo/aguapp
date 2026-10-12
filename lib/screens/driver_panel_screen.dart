@@ -105,6 +105,27 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
                                       onPressed: () => _acceptOrder(orderId, driverUid),
                                       child: const Text("Tomar Pedido", style: TextStyle(color: Colors.white)),
                                     ),
+
+//inicio
+ElevatedButton.icon(
+  icon: const Icon(Icons.check_circle_outline, color: Colors.white),
+  label: const Text("Finalizar y Cobrar", style: TextStyle(color: Colors.white)),
+  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+  onPressed: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => OrderCompletionScreen(
+          orderId: orderId,
+          requestedLiters: orderData['requestedLiters'] ?? 2000,
+          clientName: "Cliente AguApp",
+        ),
+      ),
+    );
+  },
+)
+////fin
+
                                   )
                                 ],
                               ),
@@ -143,22 +164,3 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
     }
   }
 }
-
-//agregamos boton 
-ElevatedButton.icon(
-  icon: const Icon(Icons.check_circle_outline, color: Colors.white),
-  label: const Text("Finalizar y Cobrar", style: TextStyle(color: Colors.white)),
-  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-  onPressed: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => OrderCompletionScreen(
-          orderId: orderId,
-          requestedLiters: orderData['requestedLiters'] ?? 2000,
-          clientName: "Cliente AguApp",
-        ),
-      ),
-    );
-  },
-)
