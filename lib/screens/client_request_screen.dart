@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'order_history_screen.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import '../widgets/map_picker_widget.dart';
+import 'packege:aguapp/widgets/map_picker_widget.dart';
 
 LatLng _selectedLatLng = const LatLng(-33.4560, -70.6480);
 String _addressText = "Ubicación fijada en el mapa";
