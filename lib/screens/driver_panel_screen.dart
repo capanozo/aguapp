@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'order_completion_screen.dart';
 import 'order_history_screen.dart';
 
@@ -14,24 +14,29 @@ class DriverPanelScreen extends StatefulWidget {
 class _DriverPanelScreenState extends State<DriverPanelScreen> {
   bool _isOnline = true;
 
-  Future<void> _acceptOrder(String orderId, String? driverUid) async {
-    if (driverUid == null) return;
-
+  Future<void> _acceptOrder(String orderId, String driverUid) async {
     try {
       await FirebaseFirestore.instance.collection('water_orders').doc(orderId).update({
-        'assignedDriverId': driverUid,
         'status': 'ACCEPTED',
+        'assignedDriverId': driverUid,
+        'acceptedAt': FieldValue.serverTimestamp(),
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('¡Pedido asignado a tu camión!')),
+          const SnackBar(
+            content: Text('¡Pedido asignado! Inicia el traslado al domicilio.'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al tomar pedido: $e')),
+          SnackBar(
+            content: Text('Error al tomar el pedido: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -39,12 +44,14 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final driverUid = FirebaseAuth.instance.currentUser?.uid;
+    final driver = FirebaseAuth.instance.currentUser;
+    final driverUid = driver?.uid ?? '';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AguApp - Chofer Camión Aljibe'),
-        backgroundColor: _isOnline ? Colors.green : Colors.grey.shade700,
+        title: const Text('AguApp - Panel Chofer'),
+        backgroundColor: Colors.green.shade700,
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
@@ -60,49 +67,67 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.exit_to_app),
+            tooltip: 'Cerrar Sesión',
             onPressed: () => FirebaseAuth.instance.signOut(),
-          )
+          ),
         ],
       ),
       body: Column(
         children: [
-          // Barra de estado En Línea / Offline
+          // Switch de Disponibilidad (Estilo Uber Driver)
           Container(
+            color: _isOnline ? Colors.green.shade50 : Colors.grey.shade100,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            color: _isOnline ? Colors.green.shade50 : Colors.grey.shade200,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  _isOnline ? "ESTÁS EN LÍNEA (Disponible)" : "DESCONECTADO",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: _isOnline ? Colors.green.shade800 : Colors.grey.shade700,
-                  ),
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 8,
+                      backgroundColor: _isOnline ? Colors.green : Colors.grey,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      _isOnline ? "EN LÍNEA - Recibiendo Pedidos" : "FUERA DE SERVICIO",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: _isOnline ? Colors.green.shade900 : Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
                 ),
                 Switch(
                   value: _isOnline,
-                  activeColor: Colors.green,
+                  activeColor: Colors.green.shade700,
                   onChanged: (val) => setState(() => _isOnline = val),
                 ),
               ],
             ),
           ),
+          const Divider(height: 1),
 
           // Lista de Pedidos en Tiempo Real
           Expanded(
             child: !_isOnline
-                ? const Center(
-                    child: Text(
-                      "Ponte en línea para recibir solicitudes de agua.",
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.power_settings_new, size: 64, color: Colors.grey.shade400),
+                        const SizedBox(height: 16),
+                        Text(
+                          "Ponte 'EN LÍNEA' para recibir solicitudes de agua.",
+                          style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+                        ),
+                      ],
                     ),
                   )
                 : StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
                         .collection('water_orders')
-                        .where('status', whereIn: ['PENDING', 'ACCEPTED'])
+                        .where('status', whereIn: ['PENDING', 'ACCEPTED', 'IN_TRANSIT'])
                         .snapshots(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
@@ -110,28 +135,41 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
                       }
 
                       if (snapshot.hasError) {
-                        return Center(child: Text("Error al cargar datos: ${snapshot.error}"));
+                        return Center(
+                          child: Text("Error al cargar pedidos: ${snapshot.error}"),
+                        );
                       }
 
-                      final docs = snapshot.data?.docs ?? [];
+                      final allOrders = snapshot.data?.docs ?? [];
 
-                      // Filtrar pedidos visibles para este chofer
-                      final visibleOrders = docs.where((doc) {
+                      // Filtrar pedidos:
+                      // 1. Pedidos PENDING (Disponibles para cualquier chofer)
+                      // 2. Pedidos ACCEPTED/IN_TRANSIT asignados explícitamente a ESTE chofer
+                      final visibleOrders = allOrders.where((doc) {
                         final data = doc.data() as Map<String, dynamic>;
                         final status = data['status'];
                         final assignedDriverId = data['assignedDriverId'];
 
-                        // Mostrar si está PENDING o si está ACCEPTED por este mismo chofer
                         if (status == 'PENDING') return true;
-                        if (status == 'ACCEPTED' && assignedDriverId == driverUid) return true;
+                        if ((status == 'ACCEPTED' || status == 'IN_TRANSIT') &&
+                            assignedDriverId == driverUid) {
+                          return true;
+                        }
                         return false;
                       }).toList();
 
                       if (visibleOrders.isEmpty) {
-                        return const Center(
-                          child: Text(
-                            "No hay solicitudes pendientes en tu zona.",
-                            style: TextStyle(fontSize: 16, color: Colors.grey),
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.local_shipping_outlined, size: 64, color: Colors.grey.shade400),
+                              const SizedBox(height: 16),
+                              Text(
+                                "No hay pedidos pendientes en tu zona.",
+                                style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+                              ),
+                            ],
                           ),
                         );
                       }
@@ -139,113 +177,164 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
                       return ListView.builder(
                         padding: const EdgeInsets.all(16),
                         itemCount: visibleOrders.length,
-                        // ... dentro de tu ListView.builder en DriverPanelScreen
-        itemBuilder: (context, index) {
-          final orderData = visibleOrders[index].data() as Map<String, dynamic>;
-          final orderId = visibleOrders[index].id;
-          final status = orderData['status'] ?? 'PENDING';
-          final requestedLiters = orderData['requestedLiters'] ?? 2000;
-          final isMyAcceptedOrder = status == 'ACCEPTED';
+                        itemBuilder: (context, index) {
+                          final orderData = visibleOrders[index].data() as Map<String, dynamic>;
+                          final orderId = visibleOrders[index].id;
+                          final status = orderData['status'] ?? 'PENDING';
+                          final requestedLiters = orderData['requestedLiters'] ?? 2000;
+                          final isMyAcceptedOrder = (status == 'ACCEPTED' || status == 'IN_TRANSIT');
 
-          final double lat = orderData['deliveryLocation']?['lat'] ?? -33.4560;
-          final double lng = orderData['deliveryLocation']?['lng'] ?? -70.6480;
+                          final double lat = (orderData['deliveryLocation']?['lat'] as num?)?.toDouble() ?? -33.4560;
+                          final double lng = (orderData['deliveryLocation']?['lng'] as num?)?.toDouble() ?? -70.6480;
+                          final String addressText = orderData['deliveryLocation']?['addressText'] ?? 'Ñuñoa, Santiago';
 
-          return Card( // Linea ~154
-            elevation: 4,
-            margin: const EdgeInsets.only(bottom: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding( // Linea ~158
-              padding: const EdgeInsets.all(16.0),
-              child: Column( // Linea ~160
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [ // Linea ~162
-                  // 1. Datos y Estado del Pedido
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Chip(
-                        avatar: const Icon(Icons.water_drop, color: Colors.white, size: 16),
-                        label: Text("$requestedLiters L", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        backgroundColor: Colors.blueAccent,
-                      ),
-                      Text(
-                        isMyAcceptedOrder ? "EN CURSO" : "DISPONIBLE",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: isMyAcceptedOrder ? Colors.blue.shade800 : Colors.orange.shade800,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text("Dirección: ${orderData['deliveryLocation']?['addressText'] ?? 'N/I'}"),
-                  const SizedBox(height: 16),
+                          return Card(
+                            elevation: 4,
+                            margin: const EdgeInsets.only(bottom: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Encabezado con Litros y Estado
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Chip(
+                                        avatar: const Icon(Icons.water_drop, color: Colors.white, size: 16),
+                                        label: Text(
+                                          "$requestedLiters L",
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        backgroundColor: Colors.blueAccent,
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isMyAcceptedOrder ? Colors.blue.shade100 : Colors.orange.shade100,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          isMyAcceptedOrder ? "EN CURSO" : "DISPONIBLE",
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: isMyAcceptedOrder ? Colors.blue.shade900 : Colors.orange.shade900,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
 
-                  // 2. Acciones según Estado (Navegación GPS + Cobro)
-                  if (status == 'PENDING')
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: () => _acceptOrder(orderId, driverUid),
-                        child: const Text("Tomar Pedido", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
-                      ),
-                    )
-                  else if (isMyAcceptedOrder) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.navigation_outlined, color: Colors.white),
-                        label: const Text("Navegar con GPS", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue.shade900,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: () async {
-                          final Uri googleMapsUrl = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$lat,$lng");
-                          // Abrir enlace
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.check_circle_outline, color: Colors.white),
-                        label: const Text("Finalizar y Cobrar", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green.shade700,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => OrderCompletionScreen(
-                                orderId: orderId,
-                                requestedLiters: requestedLiters,
-                                clientName: "Cliente AguApp",
+                                  // Dirección
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Icon(Icons.location_on, color: Colors.redAccent, size: 20),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          addressText,
+                                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // Botones de Acción
+                                  if (status == 'PENDING')
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 48,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.green.shade700,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                        onPressed: () => _acceptOrder(orderId, driverUid),
+                                        child: const Text(
+                                          "Tomar Pedido",
+                                          style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    )
+                                  else if (isMyAcceptedOrder) ...[
+                                    // 1. Navegación GPS (Google Maps)
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 48,
+                                      child: ElevatedButton.icon(
+                                        icon: const Icon(Icons.navigation_outlined, color: Colors.white),
+                                        label: const Text(
+                                          "Navegar con GPS",
+                                          style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.blue.shade900,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                        onPressed: () {
+                                          final Uri googleMapsUri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$lat,$lng");
+                                          // Se puede abrir directo vía URL launcher
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+
+                                    // 2. Finalizar y Cobrar (H3)
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 48,
+                                      child: ElevatedButton.icon(
+                                        icon: const Icon(Icons.check_circle_outline, color: Colors.white),
+                                        label: const Text(
+                                          "Finalizar y Cobrar",
+                                          style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.green.shade700,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => OrderCompletionScreen(
+                                                orderId: orderId,
+                                                requestedLiters: requestedLiters,
+                                                clientName: "Cliente AguApp",
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                           );
                         },
-                      ),
-                    ),
-                  ],
-                ], // <-- Cierre de children (Linea ~248)
-              ), // <-- Cierre de Column
-            ), // <-- Cierre de Padding
-          ); // <-- Cierre de Card
-        }
+                      );
+                    },
+                  ),
           ),
         ],
       ),
     );
   }
-}
+} 
