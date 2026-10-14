@@ -19,8 +19,9 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
   int _selectedLiters = 2000;
   bool _isImmediate = true;
   DateTime _scheduledDate = DateTime.now().add(const Duration(hours: 2));
-  final String _addressText = "Ñuñoa, Santiago (Ubicación de entrega)";
   bool _isSubmitting = false;
+  String _addressText = "Ñuñoa, Santiago (Ubicación de entrega)";
+  LatLng _selectedLatLng = const LatLng(-33.4560, -70.6480);
 
   Future<void> _createOrder() async {
     final user = FirebaseAuth.instance.currentUser;
