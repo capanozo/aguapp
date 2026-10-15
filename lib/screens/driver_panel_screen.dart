@@ -285,11 +285,22 @@ class _DriverPanelScreenState extends State<DriverPanelScreen> {
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                         ),
-                                        onPressed: () {
-                                          final Uri googleMapsUri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$lat,$lng");
-                                          // Se puede abrir directo vía URL launcher
+                                        // En onPressed del botón 'Navegar con GPS' en driver_panel_screen.dart:
+                                        onPressed: () async {
+                                        final Uri googleMapsUri = Uri.parse(
+                                            "https://www.google.com/maps/dir/?api=1&destination=$lat,$lng"
+                                        );
+                                        if (await canLaunchUrl(googleMapsUri)) {
+                                            await launchUrl(googleMapsUri, mode: LaunchMode.externalApplication);
+                                        } else {
+                                            if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('No se pudo abrir el mapa de navegación.')),
+                                            );
+                                            }
+                                        }
                                         },
-                                      ),
+                                     ),
                                     ),
                                     const SizedBox(height: 10),
 

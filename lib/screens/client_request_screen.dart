@@ -1,12 +1,9 @@
-import 'package:flutter/material.dart';
+ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'order_history_screen.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:aguapp/widgets/map_picker_widget.dart';
-
-LatLng _selectedLatLng = const LatLng(-33.4560, -70.6480);
-String _addressText = "Ubicación fijada en el mapa";
+import '../widgets/map_picker_widget.dart';
+import 'order_history_screen.dart';
 
 class ClientRequestScreen extends StatefulWidget {
   const ClientRequestScreen({Key? key}) : super(key: key);
@@ -18,10 +15,42 @@ class ClientRequestScreen extends StatefulWidget {
 class _ClientRequestScreenState extends State<ClientRequestScreen> {
   int _selectedLiters = 2000;
   bool _isImmediate = true;
-  DateTime _scheduledDate = DateTime.now().add(const Duration(hours: 2));
-  bool _isSubmitting = false;
-  String _addressText = "Ñuñoa, Santiago (Ubicación de entrega)";
+  DateTime _scheduledDateTime = DateTime.now().add(const Duration(hours: 2));
+  
+  // (Punto 1) Coordenadas y dirección del estanque
   LatLng _selectedLatLng = const LatLng(-33.4560, -70.6480);
+  String _addressText = "Ubicación fijada en el mapa";
+  
+  bool _isSubmitting = false;
+
+  // (Punto 4) Selector de Fecha y Hora para agendamiento
+  Future<void> _selectScheduledDateTime() async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _scheduledDateTime,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 30)),
+    );
+
+    if (pickedDate != null && mounted) {
+      final TimeOfDay? pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(_scheduledDateTime),
+      );
+
+      if (pickedTime != null) {
+        setState(() {
+          _scheduledDateTime = DateTime(
+            pickedDate.year,
+            pickedDate.month,
+            pickedDate.day,
+            pickedTime.hour,
+            pickedTime.minute,
+          );
+        });
+      }
+    }
+  }
 
   Future<void> _createOrder() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -34,18 +63,18 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
         'clientId': user.uid,
         'requestedLiters': _selectedLiters,
         'actualDeliveredLiters': _selectedLiters,
-        
+        // (Punto 1) Guardar coordenadas exactas del mapa
         'deliveryLocation': {
           'addressText': _addressText,
           'lat': _selectedLatLng.latitude,
           'lng': _selectedLatLng.longitude,
         },
-        
         'isImmediate': _isImmediate,
+        // (Punto 4) Guardar fecha programada o inmediata
         'scheduledFor': _isImmediate
             ? DateTime.now().toIso8601String()
-            : _scheduledDate.toIso8601String(),
-        'status': 'PENDING', // PENDING -> ACCEPTED -> IN_TRANSIT -> COMPLETED
+            : _scheduledDateTime.toIso8601String(),
+        'status': 'PENDING',
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -71,16 +100,10 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
         'status': 'CANCELLED_BY_CLIENT',
         'cancelledAt': FieldValue.serverTimestamp(),
       });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Pedido cancelado correctamente.')),
-        );
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cancelar el pedido: $e')),
+          SnackBar(content: Text('Error al cancelar: $e')),
         );
       }
     }
@@ -98,7 +121,7 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
-            tooltip: 'Historial de Pedidos',
+            tooltip: 'Historial',
             onPressed: () {
               Navigator.push(
                 context,
@@ -114,6 +137,7 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
           )
         ],
       ),
+      // (Punto 2) Escucha activa en tiempo real del estado del pedido
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('water_orders')
@@ -127,38 +151,39 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
 
           final activeOrders = snapshot.data?.docs ?? [];
 
-          // SI TIENE UN PEDIDO ACTIVO: Mostrar Pantalla de Seguimiento en Vivo (H6)
+          // Si hay pedido activo -> Mostrar seguimiento en línea (Punto 2)
           if (activeOrders.isNotEmpty) {
             final activeOrder = activeOrders.first;
             final orderData = activeOrder.data() as Map<String, dynamic>;
-            final String status = orderData['status'] ?? 'PENDING';
-            final int liters = orderData['requestedLiters'] ?? 2000;
-
-            return _buildActiveOrderView(activeOrder.id, status, liters, orderData);
+            return _buildTrackingView(activeOrder.id, orderData);
           }
 
-          // SI NO TIENE PEDIDOS ACTIVOS: Mostrar Formulario de Solicitud (H1)
+          // Si no hay pedido activo -> Mostrar formulario de creación
           return _buildNewOrderForm();
         },
       ),
     );
   }
 
-  // Vista H6: Tracking en Tiempo Real
-  Widget _buildActiveOrderView(String orderId, String status, int liters, Map<String, dynamic> data) {
+  // (Punto 2) Pantalla de Seguimiento en Línea
+  Widget _buildTrackingView(String orderId, Map<String, dynamic> data) {
+    final String status = data['status'] ?? 'PENDING';
+    final int liters = data['requestedLiters'] ?? 2000;
+    final String scheduledForStr = data['scheduledFor'] ?? '';
+
     String statusTitle = "Buscando Camión Aljibe...";
-    String statusSubtitle = "Estamos asignando el camión más cercano a tu domicilio.";
+    String statusSubtitle = "Estamos asignando el camión más cercano a tu ubicación.";
     Color statusColor = Colors.orange;
     IconData statusIcon = Icons.search;
 
     if (status == 'ACCEPTED') {
       statusTitle = "¡Camión Aljibe Asignado!";
-      statusSubtitle = "El chofer ha tomado tu pedido y va en camino.";
+      statusSubtitle = "El chofer aceptó tu servicio y va en camino al estanque.";
       statusColor = Colors.blue;
       statusIcon = Icons.local_shipping;
     } else if (status == 'IN_TRANSIT') {
-      statusTitle = "Inyectando Agua en Estanque";
-      statusSubtitle = "El camión está realizando la descarga en tu propiedad.";
+      statusTitle = "Descargando Agua";
+      statusSubtitle = "El camión está inyectando agua en tu estanque.";
       statusColor = Colors.green;
       statusIcon = Icons.water;
     }
@@ -183,35 +208,27 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
                         child: Icon(statusIcon, color: statusColor, size: 40),
                       ),
                       const SizedBox(height: 16),
-                      Text(
-                        statusTitle,
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                        textAlign: TextAlign.center,
-                      ),
+                      Text(statusTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
                       const SizedBox(height: 8),
-                      Text(
-                        statusSubtitle,
-                        style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                        textAlign: TextAlign.center,
-                      ),
+                      Text(statusSubtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 14), textAlign: TextAlign.center),
                       const Divider(height: 32),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text("Volumen Pedido:", style: TextStyle(color: Colors.grey)),
-                          Text("$liters Litros", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          Text("$liters L", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text("Lugar de Entrega:", style: TextStyle(color: Colors.grey)),
+                          const Text("Ubicación:", style: TextStyle(color: Colors.grey)),
                           Expanded(
                             child: Text(
-                              _addressText,
+                              data['deliveryLocation']?['addressText'] ?? 'Estanque fijado en mapa',
                               textAlign: TextAlign.end,
-                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
                             ),
                           ),
                         ],
@@ -221,17 +238,12 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-
-              // Botón de Cancelación (Solo si aún está PENDING)
               if (status == 'PENDING')
                 SizedBox(
                   width: double.infinity,
                   height: 48,
                   child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.red),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
+                    style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red)),
                     onPressed: () => _cancelOrder(orderId),
                     child: const Text('Cancelar Solicitud', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                   ),
@@ -243,7 +255,7 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
     );
   }
 
-  // Vista H1: Formulario de Solicitud Inicial
+  // Formulario con Selección de Mapa (Punto 1) y Agendamiento (Punto 4)
   Widget _buildNewOrderForm() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -253,8 +265,8 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("Ubicación del Estanque / Punto de Entrega", 
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              // (Punto 1) Selección del Estanque en el Mapa
+              const Text("Ubicación del Estanque en el Mapa", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               MapPickerWidget(
                 initialPosition: _selectedLatLng,
@@ -267,20 +279,12 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                "Dirección: $_addressText",
+                "Coordenadas: ${_selectedLatLng.latitude.toStringAsFixed(4)}, ${_selectedLatLng.longitude.toStringAsFixed(4)}",
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
               ),
- /*>             
-              const Text("Lugar de Entrega", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.location_on, color: Colors.blueAccent),
-                  title: Text(_addressText),
-                ),
-              ),
               const SizedBox(height: 24),
-<<*/
+
+              // Volumen
               const Text("Cantidad de Agua (Litros)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 12),
               Row(
@@ -299,19 +303,37 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
               ),
               const SizedBox(height: 24),
 
-              const Text("¿Cuándo lo necesitas?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              // (Punto 4) Agendamiento de Pedido
+              const Text("¿Cuándo necesitas la entrega?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               RadioListTile<bool>(
-                title: const Text("Lo antes posible"),
+                title: const Text("Lo antes posible (Inmediato)"),
                 value: true,
                 groupValue: _isImmediate,
                 onChanged: (val) => setState(() => _isImmediate = val!),
               ),
               RadioListTile<bool>(
-                title: const Text("Programar entrega"),
+                title: const Text("Programar fecha y hora"),
                 value: false,
                 groupValue: _isImmediate,
                 onChanged: (val) => setState(() => _isImmediate = val!),
               ),
+
+              if (!_isImmediate) ...[
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.calendar_today, color: Colors.blueAccent),
+                    title: Text(
+                      "Programado para: ${_scheduledDateTime.day}/${_scheduledDateTime.month}/${_scheduledDateTime.year} - ${_scheduledDateTime.hour}:${_scheduledDateTime.minute.toString().padLeft(2, '0')} hrs",
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                    trailing: TextButton(
+                      onPressed: _selectScheduledDateTime,
+                      child: const Text("Cambiar"),
+                    ),
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 32),
 
