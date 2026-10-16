@@ -1,4 +1,4 @@
- import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -295,11 +295,12 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
               const Text("Ubicación del Estanque en el Mapa", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               
-              // Widget del Mapa con callback optimizado
               MapPickerWidget(
+                key: const ValueKey('client_map_picker'), // <--- Mantiene la instancia viva en la jerarquía de widgets
                 initialPosition: _selectedLatLng,
                 onPositionSelected: _updateSelectedPosition,
               ),
+              
               const SizedBox(height: 16),
 
               const Text("Cantidad de Agua (Litros)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
