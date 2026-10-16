@@ -297,7 +297,7 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
               
               // Dentro de _buildNewOrderForm() en client_request_screen.dart:
               MapPickerWidget(
-                key: const PageStorageKey('aguapp_map_picker_widget'), // <--- CRÍTICO: Previene la destrucción del estado del mapa al llamar setState en el formulario
+                key: const ValueKey('aguapp_persistent_map_picker'), // <--- Clave fija que congela el estado del mapa en memoria
                 initialPosition: _selectedLatLng,
                 onPositionSelected: _updateSelectedPosition,
               ),

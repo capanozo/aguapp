@@ -20,26 +20,31 @@ class MapPickerWidget extends StatefulWidget {
   State<MapPickerWidget> createState() => _MapPickerWidgetState();
 }
 
-class _MapPickerWidgetState extends State<MapPickerWidget> {
+class _MapPickerWidgetState extends State<MapPickerWidget> with AutomaticKeepAliveClientMixin {
+  // Evita que Flutter destruya el widget al redibujar el formulario
+  @override
+  bool get wantKeepAlive => true;
+
   GoogleMapController? _mapController;
 
-  // Variables persistentes que NUNCA se reinician tras la primera carga
+  // Estado del Mapa
   late LatLng _currentPosition;
   double _currentZoom = 15.0;
-  bool _userHasInteracted = false;
-  bool _gpsLocationLoaded = false;
-
-  LatLng? _lastNotifiedPosition;
+  
+  // Banderas de control
+  bool _hasUserDraggedMap = false;
+  bool _hasInitialGpsCentered = false;
   bool _isLoadingGPS = false;
   bool _isSearching = false;
 
+  LatLng? _lastNotifiedPosition;
   final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _currentPosition = widget.initialPosition;
-    _getUserCurrentLocation();
+    _fetchGpsLocationOnce();
   }
 
   @override
@@ -48,9 +53,11 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
     super.dispose();
   }
 
-  // 1. OBTENER GPS (Sólo mueve la cámara si el usuario no ha interactuado aún)
-  Future<void> _getUserCurrentLocation() async {
-    if (!mounted || _userHasInteracted) return;
+  // 1. GPS SOLAMENTE UNA VEZ AL INICIAR
+  Future<void> _fetchGpsLocationOnce() async {
+    if (_hasInitialGpsCentered || _hasUserDraggedMap) return;
+    if (!mounted) return;
+
     setState(() => _isLoadingGPS = true);
 
     try {
@@ -78,13 +85,14 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      final userLatLng = LatLng(position.latitude, position.longitude);
+      // Si el usuario no ha arrastrado el mapa manualmente, centramos
+      if (mounted && !_hasUserDraggedMap && !_hasInitialGpsCentered) {
+        _hasInitialGpsCentered = true;
+        final userLatLng = LatLng(position.latitude, position.longitude);
 
-      if (mounted && !_userHasInteracted) {
         setState(() {
           _currentPosition = userLatLng;
           _isLoadingGPS = false;
-          _gpsLocationLoaded = true;
         });
 
         _mapController?.animateCamera(
@@ -96,7 +104,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
     }
   }
 
-  // 2. BÚSQUEDA POR TEXTO (GEOCODING API DIRECTA)
+  // 2. BÚSQUEDA POR TEXTO (GEOCODING)
   Future<void> _searchLocation(String query) async {
     if (query.trim().isEmpty) return;
 
@@ -104,37 +112,39 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
     FocusScope.of(context).unfocus();
 
     try {
-      // Requerido: La Geocoding API busca la dirección escrita
+      // Uso de Geocoding libre de bloqueo CORS
+      final String encodedAddress = Uri.encodeComponent(query);
       final Uri url = Uri.parse(
-        "https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(query)}",
+        "https://nominatim.openstreetmap.org/search?q=$encodedAddress&format=json&limit=1",
       );
 
-      final response = await http.get(url);
+      final response = await http.get(
+        url,
+        headers: {'User-Agent': 'AguApp_WaterDelivery_App'},
+      );
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['status'] == 'OK' && (data['results'] as List).isNotEmpty) {
-          final location = data['results'][0]['geometry']['location'];
-          final double lat = (location['lat'] as num).toDouble();
-          final double lng = (location['lng'] as num).toDouble();
+        final List data = json.decode(response.body);
+        if (data.isNotEmpty) {
+          final double lat = double.parse(data[0]['lat']);
+          final double lng = double.parse(data[0]['lon']);
           final newLatLng = LatLng(lat, lng);
 
-          if (mounted) {
-            _userHasInteracted = true;
-            setState(() {
-              _currentPosition = newLatLng;
-              _currentZoom = 14.5;
-            });
+          _hasUserDraggedMap = true; // Bloquea sobreescrituras de GPS
 
-            _mapController?.animateCamera(
-              CameraUpdate.newLatLngZoom(newLatLng, _currentZoom),
-            );
-          }
+          setState(() {
+            _currentPosition = newLatLng;
+            _currentZoom = 14.5;
+          });
+
+          _mapController?.animateCamera(
+            CameraUpdate.newLatLngZoom(newLatLng, _currentZoom),
+          );
         } else {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('No se encontró la dirección. Intenta con "Ciudad, Comuna" (Ej: Tongoy, Chile)'),
+                content: Text('No se encontró la ubicación. Intenta con "Comuna, Ciudad" (ej: Tongoy)'),
                 backgroundColor: Colors.orange,
               ),
             );
@@ -155,25 +165,23 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
     }
   }
 
-  // CONTROLES DE ZOOM PERSISTENTES
-  Future<void> _zoomIn() async {
-    if (_mapController != null) {
-      _userHasInteracted = true;
-      _currentZoom += 1.0;
-      await _mapController!.animateCamera(CameraUpdate.zoomIn());
-    }
+  // CONTROLES DE ZOOM
+  void _zoomIn() {
+    _hasUserDraggedMap = true;
+    _currentZoom += 1.0;
+    _mapController?.animateCamera(CameraUpdate.zoomIn());
   }
 
-  Future<void> _zoomOut() async {
-    if (_mapController != null) {
-      _userHasInteracted = true;
-      _currentZoom -= 1.0;
-      await _mapController!.animateCamera(CameraUpdate.zoomOut());
-    }
+  void _zoomOut() {
+    _hasUserDraggedMap = true;
+    _currentZoom -= 1.0;
+    _mapController?.animateCamera(CameraUpdate.zoomOut());
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Requerido por AutomaticKeepAliveClientMixin
+
     return Container(
       height: 340,
       decoration: BoxDecoration(
@@ -210,15 +218,15 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               myLocationEnabled: true,
               myLocationButtonEnabled: false,
               onCameraMoveStarted: () {
-                // Si el usuario empieza a arrastrar el mapa con la mano, bloqueamos re-centrados del GPS
-                _userHasInteracted = true;
+                // Marca inmediatamente que el usuario tomó el control manual del mapa
+                _hasUserDraggedMap = true;
               },
               onCameraMove: (position) {
                 _currentPosition = position.target;
                 _currentZoom = position.zoom;
               },
               onCameraIdle: () {
-                // Notifica al formulario solo si el mapa se detuvo en un nuevo punto
+                // Solo notifica al padre si el desplazamiento es mayor a la tolerancia de ruido
                 if (_lastNotifiedPosition == null ||
                     (_lastNotifiedPosition!.latitude - _currentPosition.latitude).abs() > 0.0001 ||
                     (_lastNotifiedPosition!.longitude - _currentPosition.longitude).abs() > 0.0001) {
@@ -315,7 +323,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               ),
             ),
 
-            // BOTÓN GPS UBICACIÓN ACTUAL
+            // BOTÓN RE-CENTRAR GPS
             Positioned(
               left: 14,
               bottom: 14,
@@ -324,14 +332,15 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
                 backgroundColor: Colors.white,
                 elevation: 4,
                 onPressed: () {
-                  _userHasInteracted = false;
-                  _getUserCurrentLocation();
+                  _hasUserDraggedMap = false;
+                  _hasInitialGpsCentered = false;
+                  _fetchGpsLocationOnce();
                 },
                 child: const Icon(Icons.my_location, color: Colors.blueAccent),
               ),
             ),
 
-            // BOTONES ZOOM (+ / -)
+            // BOTONES DE ZOOM (+ / -)
             Positioned(
               right: 14,
               bottom: 14,
@@ -356,7 +365,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               ),
             ),
 
-            // INDICADOR GPS
+            // INDICADOR DE CARGA GPS
             if (_isLoadingGPS)
               Positioned(
                 bottom: 14,
@@ -385,4 +394,4 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
       ),
     );
   }
-} 
+}
