@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -13,17 +13,29 @@ class ClientRequestScreen extends StatefulWidget {
 }
 
 class _ClientRequestScreenState extends State<ClientRequestScreen> {
+  // Variables de Ubicación y Estado
+  LatLng _selectedLatLng = const LatLng(-33.4560, -70.6480);
+  String _addressText = "Ubicación fijada en el mapa";
+
   int _selectedLiters = 2000;
   bool _isImmediate = true;
   DateTime _scheduledDateTime = DateTime.now().add(const Duration(hours: 2));
-  
-  // (Punto 1) Coordenadas y dirección del estanque
-  LatLng _selectedLatLng = const LatLng(-33.4560, -70.6480);
-  String _addressText = "Ubicación fijada en el mapa";
-  
   bool _isSubmitting = false;
 
-  // (Punto 4) Selector de Fecha y Hora para agendamiento
+  // Evita el bucle infinito de re-renderizado al mover el mapa
+  void _updateSelectedPosition(LatLng position, String address) {
+    if ((_selectedLatLng.latitude - position.latitude).abs() < 0.00001 &&
+        (_selectedLatLng.longitude - position.longitude).abs() < 0.00001 &&
+        _addressText == address) {
+      return;
+    }
+
+    setState(() {
+      _selectedLatLng = position;
+      _addressText = address;
+    });
+  }
+
   Future<void> _selectScheduledDateTime() async {
     final DateTime? pickedDate = await showDatePicker(
       context: context,
@@ -38,7 +50,7 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
         initialTime: TimeOfDay.fromDateTime(_scheduledDateTime),
       );
 
-      if (pickedTime != null) {
+      if (pickedTime != null && mounted) {
         setState(() {
           _scheduledDateTime = DateTime(
             pickedDate.year,
@@ -63,14 +75,12 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
         'clientId': user.uid,
         'requestedLiters': _selectedLiters,
         'actualDeliveredLiters': _selectedLiters,
-        // (Punto 1) Guardar coordenadas exactas del mapa
         'deliveryLocation': {
           'addressText': _addressText,
           'lat': _selectedLatLng.latitude,
           'lng': _selectedLatLng.longitude,
         },
         'isImmediate': _isImmediate,
-        // (Punto 4) Guardar fecha programada o inmediata
         'scheduledFor': _isImmediate
             ? DateTime.now().toIso8601String()
             : _scheduledDateTime.toIso8601String(),
@@ -80,13 +90,19 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('¡Solicitud de agua enviada con éxito!')),
+          const SnackBar(
+            content: Text('¡Solicitud de agua enviada con éxito!'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al enviar solicitud: $e')),
+          SnackBar(
+            content: Text('Error al enviar solicitud: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -121,7 +137,7 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.history),
-            tooltip: 'Historial',
+            tooltip: 'Historial de Pedidos',
             onPressed: () {
               Navigator.push(
                 context,
@@ -133,11 +149,11 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.exit_to_app),
+            tooltip: 'Cerrar Sesión',
             onPressed: () => FirebaseAuth.instance.signOut(),
           )
         ],
       ),
-      // (Punto 2) Escucha activa en tiempo real del estado del pedido
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('water_orders')
@@ -151,25 +167,25 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
 
           final activeOrders = snapshot.data?.docs ?? [];
 
-          // Si hay pedido activo -> Mostrar seguimiento en línea (Punto 2)
+          // Si hay un pedido activo -> Vista de Seguimiento en Tiempo Real (Uber Style)
           if (activeOrders.isNotEmpty) {
             final activeOrder = activeOrders.first;
             final orderData = activeOrder.data() as Map<String, dynamic>;
             return _buildTrackingView(activeOrder.id, orderData);
           }
 
-          // Si no hay pedido activo -> Mostrar formulario de creación
+          // Si no hay pedido activo -> Formulario de Solicitud
           return _buildNewOrderForm();
         },
       ),
     );
   }
 
-  // (Punto 2) Pantalla de Seguimiento en Línea
+  // Vista de Seguimiento en Vivo
   Widget _buildTrackingView(String orderId, Map<String, dynamic> data) {
     final String status = data['status'] ?? 'PENDING';
     final int liters = data['requestedLiters'] ?? 2000;
-    final String scheduledForStr = data['scheduledFor'] ?? '';
+    final String address = data['deliveryLocation']?['addressText'] ?? 'Estanque fijado en mapa';
 
     String statusTitle = "Buscando Camión Aljibe...";
     String statusSubtitle = "Estamos asignando el camión más cercano a tu ubicación.";
@@ -185,7 +201,7 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
       statusTitle = "Descargando Agua";
       statusSubtitle = "El camión está inyectando agua en tu estanque.";
       statusColor = Colors.green;
-      statusIcon = Icons.water;
+      statusIcon = Icons.water_drop;
     }
 
     return Center(
@@ -208,9 +224,17 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
                         child: Icon(statusIcon, color: statusColor, size: 40),
                       ),
                       const SizedBox(height: 16),
-                      Text(statusTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                      Text(
+                        statusTitle,
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
                       const SizedBox(height: 8),
-                      Text(statusSubtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 14), textAlign: TextAlign.center),
+                      Text(
+                        statusSubtitle,
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
                       const Divider(height: 32),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -223,10 +247,10 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text("Ubicación:", style: TextStyle(color: Colors.grey)),
+                          const Text("Dirección:", style: TextStyle(color: Colors.grey)),
                           Expanded(
                             child: Text(
-                              data['deliveryLocation']?['addressText'] ?? 'Estanque fijado en mapa',
+                              address,
                               textAlign: TextAlign.end,
                               style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
                             ),
@@ -243,7 +267,10 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
                   width: double.infinity,
                   height: 48,
                   child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red)),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.red),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
                     onPressed: () => _cancelOrder(orderId),
                     child: const Text('Cancelar Solicitud', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                   ),
@@ -255,7 +282,7 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
     );
   }
 
-  // Formulario con Selección de Mapa (Punto 1) y Agendamiento (Punto 4)
+  // Formulario con Selección de Estanque en Mapa y Agendamiento
   Widget _buildNewOrderForm() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
@@ -265,21 +292,16 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // (Punto 1) Selección del Estanque en el Mapa
               const Text("Ubicación del Estanque en el Mapa", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
+              
+              // Widget del Mapa con callback optimizado
               MapPickerWidget(
                 initialPosition: _selectedLatLng,
-                onPositionSelected: _updateSelectedPosition, // Usamos el método optimizado
+                onPositionSelected: _updateSelectedPosition,
               ),
-              const SizedBox(height: 8),
-              Text(
-                "Coordenadas: ${_selectedLatLng.latitude.toStringAsFixed(4)}, ${_selectedLatLng.longitude.toStringAsFixed(4)}",
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-              // Volumen
               const Text("Cantidad de Agua (Litros)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 12),
               Row(
@@ -287,30 +309,41 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
                 children: [2000, 5000, 10000].map((liters) {
                   final isSelected = _selectedLiters == liters;
                   return ChoiceChip(
-                    label: Text("$liters L", style: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold)),
+                    label: Text(
+                      "$liters L",
+                      style: TextStyle(
+                        color: isSelected ? Colors.white : Colors.black87,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     selected: isSelected,
                     selectedColor: Colors.blueAccent,
-                    onSelected: (selected) {
-                      if (selected) setState(() => _selectedLiters = liters);
+                    onSelected: (bool selected) {
+                      if (selected) {
+                        setState(() => _selectedLiters = liters);
+                      }
                     },
                   );
                 }).toList(),
               ),
               const SizedBox(height: 24),
 
-              // (Punto 4) Agendamiento de Pedido
               const Text("¿Cuándo necesitas la entrega?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               RadioListTile<bool>(
                 title: const Text("Lo antes posible (Inmediato)"),
                 value: true,
                 groupValue: _isImmediate,
-                onChanged: (val) => setState(() => _isImmediate = val!),
+                onChanged: (bool? val) {
+                  if (val != null) setState(() => _isImmediate = val);
+                },
               ),
               RadioListTile<bool>(
                 title: const Text("Programar fecha y hora"),
                 value: false,
                 groupValue: _isImmediate,
-                onChanged: (val) => setState(() => _isImmediate = val!),
+                onChanged: (bool? val) {
+                  if (val != null) setState(() => _isImmediate = val);
+                },
               ),
 
               if (!_isImmediate) ...[
@@ -352,20 +385,4 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
       ),
     );
   }
-}
-// En lib/screens/client_request_screen.dart
-
-// 1. Agregar un chequeo de tolerancia para evitar re-renderizados innecesarios
-void _updateSelectedPosition(LatLng position, String address) {
-  // Evita actualizar el estado si las coordenadas son prácticamente idénticas (evita el bucle)
-  if ((_selectedLatLng.latitude - position.latitude).abs() < 0.00001 &&
-      (_selectedLatLng.longitude - position.longitude).abs() < 0.00001 &&
-      _addressText == address) {
-    return;
-  }
-
-  setState(() {
-    _selectedLatLng = position;
-    _addressText = address;
-  });
 }
