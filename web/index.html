@@ -33,7 +33,12 @@
   <link rel="manifest" href="manifest.json">
   <!-- Script de Google Maps API con soporte de punteros web -->
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDnJmdGfPJ1GeAFEI8LOhON9Sv3Dc-Q_iU"></script>
-  
+  <style>
+    /* Permite interacciones fluidas del mouse/touch sobre la vista del mapa en Flutter Web */
+    flt-glass-pane, flt-platform-view {
+      pointer-events: auto !important;
+    }
+  </style>
 </head>
 <body>
   <!--
