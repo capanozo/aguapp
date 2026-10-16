@@ -1,4 +1,4 @@
- import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -100,7 +100,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
 
     try {
       final Uri url = Uri.parse(
-        "https://maps.googleapis.com/maps/api/geocode/json?address=\${Uri.encodeComponent(query)}",
+        "https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(query)}",
       );
 
       final response = await http.get(url);
@@ -137,7 +137,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error en la búsqueda: \$e'),
+            content: Text('Error en la búsqueda: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -193,4 +193,183 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
                 Factory<OneSequenceGestureRecognizer>(
                   () => EagerGestureRecognizer(),
                 ),
-                Factory<PanGestureRecognizer>(() => PanGestureRecognizer
+                Factory<PanGestureRecognizer>(() => PanGestureRecognizer()),
+                Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
+              },
+              zoomGesturesEnabled: true,
+              scrollGesturesEnabled: true,
+              rotateGesturesEnabled: true,
+              tiltGesturesEnabled: false,
+              zoomControlsEnabled: false,
+              myLocationEnabled: true,
+              myLocationButtonEnabled: false,
+              onCameraMove: (position) {
+                _currentPosition = position.target;
+                _currentZoom = position.zoom;
+              },
+              // CONTROL DEL BUCLE INFINITO: Solo notifica si la posición cambió significativamente
+              onCameraIdle: () {
+                if (_lastNotifiedPosition == null ||
+                    (_lastNotifiedPosition!.latitude - _currentPosition.latitude).abs() > 0.00001 ||
+                    (_lastNotifiedPosition!.longitude - _currentPosition.longitude).abs() > 0.00001) {
+                  
+                  _lastNotifiedPosition = _currentPosition;
+
+                  final String lat = _currentPosition.latitude.toStringAsFixed(5);
+                  final String lng = _currentPosition.longitude.toStringAsFixed(5);
+                  widget.onPositionSelected(
+                    _currentPosition,
+                    "Estanque fijado ($lat, $lng)",
+                  );
+                }
+              },
+            ),
+
+            // PIN CENTRADO ESTILO UBER
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 38),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.85),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        "Punto del Estanque",
+                        style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Icon(Icons.location_on, color: Colors.redAccent, size: 46),
+                  ],
+                ),
+              ),
+            ),
+
+            // BARRA DE BÚSQUEDA DE CIUDAD O DIRECCIÓN
+            Positioned(
+              top: 12,
+              left: 12,
+              right: 12,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2))
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Icon(Icons.search, color: Colors.blueAccent),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (value) => _searchLocation(value),
+                        style: const TextStyle(fontSize: 14),
+                        decoration: const InputDecoration(
+                          hintText: "Escribe ciudad o dirección (ej. Tongoy)...",
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    if (_isSearching)
+                      const Padding(
+                        padding: EdgeInsets.all(10.0),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    else if (_searchController.text.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.clear, size: 18, color: Colors.grey),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {});
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            // BOTÓN GPS UBICACIÓN ACTUAL
+            Positioned(
+              left: 14,
+              bottom: 14,
+              child: FloatingActionButton.small(
+                heroTag: "btn_gps_location",
+                backgroundColor: Colors.white,
+                elevation: 4,
+                onPressed: _getUserCurrentLocation,
+                child: const Icon(Icons.my_location, color: Colors.blueAccent),
+              ),
+            ),
+
+            // BOTONES ZOOM (+ / -)
+            Positioned(
+              right: 14,
+              bottom: 14,
+              child: Column(
+                children: [
+                  FloatingActionButton.small(
+                    heroTag: "btn_zoom_in",
+                    backgroundColor: Colors.white,
+                    elevation: 4,
+                    onPressed: _zoomIn,
+                    child: const Icon(Icons.add, color: Colors.blueAccent),
+                  ),
+                  const SizedBox(height: 8),
+                  FloatingActionButton.small(
+                    heroTag: "btn_zoom_out",
+                    backgroundColor: Colors.white,
+                    elevation: 4,
+                    onPressed: _zoomOut,
+                    child: const Icon(Icons.remove, color: Colors.blueAccent),
+                  ),
+                ],
+              ),
+            ),
+
+            // INDICADOR DE CARGA GPS
+            if (_isLoadingGPS)
+              Positioned(
+                bottom: 14,
+                left: 70,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent.shade700,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    children: [
+                      SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      ),
+                      SizedBox(width: 8),
+                      Text("Obteniendo GPS...", style: TextStyle(color: Colors.white, fontSize: 11)),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
