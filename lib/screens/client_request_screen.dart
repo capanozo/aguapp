@@ -295,12 +295,13 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
               const Text("Ubicación del Estanque en el Mapa", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 8),
               
+              // Dentro de _buildNewOrderForm() en client_request_screen.dart:
               MapPickerWidget(
-                key: const ValueKey('client_map_picker'), // <--- Mantiene la instancia viva en la jerarquía de widgets
+                key: const PageStorageKey('aguapp_map_picker_widget'), // <--- CRÍTICO: Previene la destrucción del estado del mapa al llamar setState en el formulario
                 initialPosition: _selectedLatLng,
                 onPositionSelected: _updateSelectedPosition,
               ),
-              
+            
               const SizedBox(height: 16),
 
               const Text("Cantidad de Agua (Litros)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),

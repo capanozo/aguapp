@@ -1,9 +1,10 @@
-import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 
 class MapPickerWidget extends StatefulWidget {
   final LatLng initialPosition;
@@ -21,11 +22,12 @@ class MapPickerWidget extends StatefulWidget {
 
 class _MapPickerWidgetState extends State<MapPickerWidget> {
   GoogleMapController? _mapController;
-  
-  // Mantenemos posición y zoom internos persistentes
+
+  // Variables persistentes que NUNCA se reinician tras la primera carga
   late LatLng _currentPosition;
   double _currentZoom = 15.0;
-  bool _isMapInitialized = false;
+  bool _userHasInteracted = false;
+  bool _gpsLocationLoaded = false;
 
   LatLng? _lastNotifiedPosition;
   bool _isLoadingGPS = false;
@@ -46,9 +48,9 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
     super.dispose();
   }
 
-  // 1. OBTENER GPS DEL DISPOSITIVO
+  // 1. OBTENER GPS (Sólo mueve la cámara si el usuario no ha interactuado aún)
   Future<void> _getUserCurrentLocation() async {
-    if (!mounted) return;
+    if (!mounted || _userHasInteracted) return;
     setState(() => _isLoadingGPS = true);
 
     try {
@@ -78,10 +80,11 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
 
       final userLatLng = LatLng(position.latitude, position.longitude);
 
-      if (mounted) {
+      if (mounted && !_userHasInteracted) {
         setState(() {
           _currentPosition = userLatLng;
           _isLoadingGPS = false;
+          _gpsLocationLoaded = true;
         });
 
         _mapController?.animateCamera(
@@ -93,23 +96,57 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
     }
   }
 
-  // 2. BÚSQUEDA POR TEXTO (Evita CORS usando geocodificación interna / Geocoding Web)
+  // 2. BÚSQUEDA POR TEXTO (GEOCODING API DIRECTA)
   Future<void> _searchLocation(String query) async {
     if (query.trim().isEmpty) return;
 
     setState(() => _isSearching = true);
+    FocusScope.of(context).unfocus();
 
     try {
-      // Búsqueda aproximada mediante traslación de foco o Geocoding nativo de Flutter
-      // Nota: Si usas la API de Google Maps en web, el controller o el geocoder nativo resuelven el punto
-      FocusScope.of(context).unfocus();
-      
-      // Notificación visual de búsqueda procesada
+      // Requerido: La Geocoding API busca la dirección escrita
+      final Uri url = Uri.parse(
+        "https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(query)}",
+      );
+
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK' && (data['results'] as List).isNotEmpty) {
+          final location = data['results'][0]['geometry']['location'];
+          final double lat = (location['lat'] as num).toDouble();
+          final double lng = (location['lng'] as num).toDouble();
+          final newLatLng = LatLng(lat, lng);
+
+          if (mounted) {
+            _userHasInteracted = true;
+            setState(() {
+              _currentPosition = newLatLng;
+              _currentZoom = 14.5;
+            });
+
+            _mapController?.animateCamera(
+              CameraUpdate.newLatLngZoom(newLatLng, _currentZoom),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No se encontró la dirección. Intenta con "Ciudad, Comuna" (Ej: Tongoy, Chile)'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Buscando "$query"... Mueve el mapa si deseas afinar el estanque.'),
-            duration: const Duration(seconds: 2),
+            content: Text('Error en la búsqueda: $e'),
+            backgroundColor: Colors.red,
           ),
         );
       }
@@ -118,8 +155,10 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
     }
   }
 
+  // CONTROLES DE ZOOM PERSISTENTES
   Future<void> _zoomIn() async {
     if (_mapController != null) {
+      _userHasInteracted = true;
       _currentZoom += 1.0;
       await _mapController!.animateCamera(CameraUpdate.zoomIn());
     }
@@ -127,6 +166,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
 
   Future<void> _zoomOut() async {
     if (_mapController != null) {
+      _userHasInteracted = true;
       _currentZoom -= 1.0;
       await _mapController!.animateCamera(CameraUpdate.zoomOut());
     }
@@ -154,12 +194,6 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               ),
               onMapCreated: (controller) {
                 _mapController = controller;
-                if (!_isMapInitialized) {
-                  _isMapInitialized = true;
-                  _mapController?.animateCamera(
-                    CameraUpdate.newLatLngZoom(_currentPosition, _currentZoom),
-                  );
-                }
               },
               gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
                 Factory<OneSequenceGestureRecognizer>(
@@ -175,13 +209,16 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               zoomControlsEnabled: false,
               myLocationEnabled: true,
               myLocationButtonEnabled: false,
+              onCameraMoveStarted: () {
+                // Si el usuario empieza a arrastrar el mapa con la mano, bloqueamos re-centrados del GPS
+                _userHasInteracted = true;
+              },
               onCameraMove: (position) {
-                // Mantenemos actualizados las coordenadas y la escala de zoom sin reiniciar
                 _currentPosition = position.target;
                 _currentZoom = position.zoom;
               },
               onCameraIdle: () {
-                // Notificar al formulario solo cuando la posición se ha desplazado más allá del umbral de tolerancia
+                // Notifica al formulario solo si el mapa se detuvo en un nuevo punto
                 if (_lastNotifiedPosition == null ||
                     (_lastNotifiedPosition!.latitude - _currentPosition.latitude).abs() > 0.0001 ||
                     (_lastNotifiedPosition!.longitude - _currentPosition.longitude).abs() > 0.0001) {
@@ -223,7 +260,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               ),
             ),
 
-            // BARRA DE BÚSQUEDA FLOTANTE
+            // BARRA DE BÚSQUEDA DE CIUDAD O DIRECCIÓN
             Positioned(
               top: 12,
               left: 12,
@@ -249,7 +286,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
                         onSubmitted: (value) => _searchLocation(value),
                         style: const TextStyle(fontSize: 14),
                         decoration: const InputDecoration(
-                          hintText: "Escribe ciudad o referencia...",
+                          hintText: "Escribe ciudad o dirección (ej. Tongoy)...",
                           border: InputBorder.none,
                           isDense: true,
                           contentPadding: EdgeInsets.symmetric(vertical: 12),
@@ -286,7 +323,10 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
                 heroTag: "btn_gps_location",
                 backgroundColor: Colors.white,
                 elevation: 4,
-                onPressed: _getUserCurrentLocation,
+                onPressed: () {
+                  _userHasInteracted = false;
+                  _getUserCurrentLocation();
+                },
                 child: const Icon(Icons.my_location, color: Colors.blueAccent),
               ),
             ),
@@ -345,4 +385,4 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
       ),
     );
   }
-}
+} 
