@@ -206,14 +206,28 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
                 _currentPosition = position.target;
                 _currentZoom = position.zoom;
               },
+              // En _MapPickerWidgetState dentro de lib/widgets/map_picker_widget.dart
+
+              LatLng? _lastNotifiedPosition;
+
+              // Modificar el callback onCameraIdle del GoogleMap:
               onCameraIdle: () {
-                final String lat = _currentPosition.latitude.toStringAsFixed(5);
-                final String lng = _currentPosition.longitude.toStringAsFixed(5);
-                widget.onPositionSelected(
-                  _currentPosition,
-                  "Estanque fijado ($lat, $lng)",
-                );
+                // Solo notifica al padre si la cámara se movió a un nuevo punto
+                if (_lastNotifiedPosition == null ||
+                    (_lastNotifiedPosition!.latitude - _currentPosition.latitude).abs() > 0.00001 ||
+                    (_lastNotifiedPosition!.longitude - _currentPosition.longitude).abs() > 0.00001) {
+                  
+                  _lastNotifiedPosition = _currentPosition;
+                  
+                  final String lat = _currentPosition.latitude.toStringAsFixed(5);
+                  final String lng = _currentPosition.longitude.toStringAsFixed(5);
+                  widget.onPositionSelected(
+                    _currentPosition,
+                    "Estanque fijado ($lat, $lng)",
+                  );
+                }
               },
+
             ),
 
             // PIN CENTRADO ESTILO UBER

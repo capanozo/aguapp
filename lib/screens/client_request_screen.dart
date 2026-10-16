@@ -1,4 +1,4 @@
- import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -270,12 +270,7 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
               const SizedBox(height: 8),
               MapPickerWidget(
                 initialPosition: _selectedLatLng,
-                onPositionSelected: (position, address) {
-                  setState(() {
-                    _selectedLatLng = position;
-                    _addressText = address;
-                  });
-                },
+                onPositionSelected: _updateSelectedPosition, // Usamos el método optimizado
               ),
               const SizedBox(height: 8),
               Text(
@@ -357,4 +352,20 @@ class _ClientRequestScreenState extends State<ClientRequestScreen> {
       ),
     );
   }
+}
+// En lib/screens/client_request_screen.dart
+
+// 1. Agregar un chequeo de tolerancia para evitar re-renderizados innecesarios
+void _updateSelectedPosition(LatLng position, String address) {
+  // Evita actualizar el estado si las coordenadas son prácticamente idénticas (evita el bucle)
+  if ((_selectedLatLng.latitude - position.latitude).abs() < 0.00001 &&
+      (_selectedLatLng.longitude - position.longitude).abs() < 0.00001 &&
+      _addressText == address) {
+    return;
+  }
+
+  setState(() {
+    _selectedLatLng = position;
+    _addressText = address;
+  });
 }
