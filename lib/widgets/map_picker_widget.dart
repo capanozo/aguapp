@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 
 class MapPickerWidget extends StatefulWidget {
   final LatLng initialPosition;
@@ -20,17 +22,30 @@ class MapPickerWidget extends StatefulWidget {
 
 class _MapPickerWidgetState extends State<MapPickerWidget> {
   late LatLng _currentPosition;
-  double _currentZoom = 15.0; // Preserva el zoom seleccionado por el usuario
+  double _currentZoom = 15.0;
   GoogleMapController? _mapController;
+
   bool _isLoadingGPS = false;
+  bool _isSearching = false;
+
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _currentPosition = widget.initialPosition;
+    _getUserCurrentLocation(); // Intenta obtener el GPS del dispositivo al iniciar
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // 1. OBTENER GPS NATIVO Y CENTRAR MAPA
   Future<void> _getUserCurrentLocation() async {
+    if (!mounted) return;
     setState(() => _isLoadingGPS = true);
 
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -62,7 +77,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
 
       if (mounted) {
         _currentPosition = userLatLng;
-        _currentZoom = 15.0; // Zoom adecuado al ubicar por GPS
+        _currentZoom = 15.0;
         _isLoadingGPS = false;
         setState(() {});
 
@@ -75,7 +90,62 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
     }
   }
 
-  // Controles de Zoom que actualizan la variable interna
+  // 2. BUSQUEDA POR TEXTO (GEOCODING SIMPLE - OPCION 1)
+  Future<void> _searchLocation(String query) async {
+    if (query.trim().isEmpty) return;
+
+    setState(() => _isSearching = true);
+
+    try {
+      // Usa el endpoint geocode web de Google Maps
+      final Uri url = Uri.parse(
+        "https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(query)}",
+      );
+
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK' && (data['results'] as List).isNotEmpty) {
+          final location = data['results'][0]['geometry']['location'];
+          final double lat = (location['lat'] as num).toDouble();
+          final double lng = (location['lng'] as num).toDouble();
+          final newLatLng = LatLng(lat, lng);
+
+          if (mounted) {
+            setState(() {
+              _currentPosition = newLatLng;
+              _currentZoom = 14.5;
+            });
+
+            _mapController?.animateCamera(
+              CameraUpdate.newLatLngZoom(newLatLng, _currentZoom),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No se encontró la ubicación. Intenta con otra ciudad o dirección.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al buscar dirección: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSearching = false);
+    }
+  }
+
   Future<void> _zoomIn() async {
     if (_mapController != null) {
       _currentZoom += 1.0;
@@ -93,7 +163,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 320,
+      height: 340,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.blueAccent.shade200, width: 2),
@@ -105,6 +175,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
         borderRadius: BorderRadius.circular(14),
         child: Stack(
           children: [
+            // MAPA PRINCIPAL
             GoogleMap(
               initialCameraPosition: CameraPosition(
                 target: _currentPosition,
@@ -112,6 +183,10 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               ),
               onMapCreated: (controller) {
                 _mapController = controller;
+                // Si el GPS ya había respondido antes de renderizar el controlador, animamos
+                _mapController?.animateCamera(
+                  CameraUpdate.newLatLngZoom(_currentPosition, _currentZoom),
+                );
               },
               gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
                 Factory<OneSequenceGestureRecognizer>(
@@ -127,10 +202,9 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               zoomControlsEnabled: false,
               myLocationEnabled: true,
               myLocationButtonEnabled: false,
-              // Guarda tanto las coordenadas como el zoom exacto donde el usuario soltó la cámara
               onCameraMove: (position) {
                 _currentPosition = position.target;
-                _currentZoom = position.zoom; 
+                _currentZoom = position.zoom;
               },
               onCameraIdle: () {
                 final String lat = _currentPosition.latitude.toStringAsFixed(5);
@@ -142,7 +216,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               },
             ),
 
-            // Pin Fijo en el Centro (Estilo Uber)
+            // PIN CENTRADO ESTILO UBER
             Center(
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 38),
@@ -152,11 +226,11 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.8),
+                        color: Colors.black.withOpacity(0.85),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Text(
-                        "Punto de Entrega",
+                        "Punto del Estanque",
                         style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -167,7 +241,62 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               ),
             ),
 
-            // Botón GPS
+            // BUSCADOR FLOTANTE DE CIUDAD / DIRECCION (ESTILO UBER SEARCH BAR)
+            Positioned(
+              top: 12,
+              left: 12,
+              right: 12,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2))
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Icon(Icons.search, color: Colors.blueAccent),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (value) => _searchLocation(value),
+                        style: const TextStyle(fontSize: 14),
+                        decoration: const InputDecoration(
+                          hintText: "Escribe ciudad o dirección (ej. Tongoy)...",
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    if (_isSearching)
+                      const Padding(
+                        padding: EdgeInsets.all(10.0),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    else if (_searchController.text.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.clear, size: 18, color: Colors.grey),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {});
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            // BOTON UBICACION ACTUAL (GPS)
             Positioned(
               left: 14,
               bottom: 14,
@@ -180,7 +309,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               ),
             ),
 
-            // Botones Zoom
+            // BOTONES DE ZOOM (+ / -)
             Positioned(
               right: 14,
               bottom: 14,
@@ -205,10 +334,11 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               ),
             ),
 
+            // INDICADOR DE CARGA GPS
             if (_isLoadingGPS)
               Positioned(
-                top: 10,
-                left: 10,
+                bottom: 14,
+                left: 70,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
