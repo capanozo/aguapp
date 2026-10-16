@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:geolocator/geolocator.dart'; // <--- Import del GPS
+import 'package:geolocator/geolocator.dart';
 
 class MapPickerWidget extends StatefulWidget {
   final LatLng initialPosition;
@@ -20,30 +20,26 @@ class MapPickerWidget extends StatefulWidget {
 
 class _MapPickerWidgetState extends State<MapPickerWidget> {
   late LatLng _currentPosition;
+  double _currentZoom = 15.0; // Preserva el zoom seleccionado por el usuario
   GoogleMapController? _mapController;
-  bool _isLoadingGPS = true;
+  bool _isLoadingGPS = false;
 
   @override
   void initState() {
     super.initState();
     _currentPosition = widget.initialPosition;
-    _getUserCurrentLocation(); // <--- Obtener posición inicial vía GPS
   }
 
-  // Función para obtener las coordenadas actuales del dispositivo
   Future<void> _getUserCurrentLocation() async {
-    bool serviceEnabled;
-    LocationPermission permission;
+    setState(() => _isLoadingGPS = true);
 
-    // 1. Verificar si los servicios de ubicación están habilitados
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       if (mounted) setState(() => _isLoadingGPS = false);
       return;
     }
 
-    // 2. Gestionar Permisos de Geolocalización
-    permission = await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
@@ -57,7 +53,6 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
       return;
     }
 
-    // 3. Obtener Posición Actual del GPS
     try {
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
@@ -66,18 +61,32 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
       final userLatLng = LatLng(position.latitude, position.longitude);
 
       if (mounted) {
-        setState(() {
-          _currentPosition = userLatLng;
-          _isLoadingGPS = false;
-        });
+        _currentPosition = userLatLng;
+        _currentZoom = 15.0; // Zoom adecuado al ubicar por GPS
+        _isLoadingGPS = false;
+        setState(() {});
 
-        // Mover la cámara del mapa con animación suave
         _mapController?.animateCamera(
-          CameraUpdate.newLatLngZoom(userLatLng, 16.0),
+          CameraUpdate.newLatLngZoom(userLatLng, _currentZoom),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) setState(() => _isLoadingGPS = false);
+    }
+  }
+
+  // Controles de Zoom que actualizan la variable interna
+  Future<void> _zoomIn() async {
+    if (_mapController != null) {
+      _currentZoom += 1.0;
+      await _mapController!.animateCamera(CameraUpdate.zoomIn());
+    }
+  }
+
+  Future<void> _zoomOut() async {
+    if (_mapController != null) {
+      _currentZoom -= 1.0;
+      await _mapController!.animateCamera(CameraUpdate.zoomOut());
     }
   }
 
@@ -99,7 +108,7 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
             GoogleMap(
               initialCameraPosition: CameraPosition(
                 target: _currentPosition,
-                zoom: 15.0,
+                zoom: _currentZoom,
               ),
               onMapCreated: (controller) {
                 _mapController = controller;
@@ -113,20 +122,27 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               },
               zoomGesturesEnabled: true,
               scrollGesturesEnabled: true,
+              rotateGesturesEnabled: true,
+              tiltGesturesEnabled: false,
               zoomControlsEnabled: false,
-              myLocationEnabled: true, // Muestra el punto azul de ubicación actual
+              myLocationEnabled: true,
               myLocationButtonEnabled: false,
+              // Guarda tanto las coordenadas como el zoom exacto donde el usuario soltó la cámara
               onCameraMove: (position) {
                 _currentPosition = position.target;
+                _currentZoom = position.zoom; 
               },
               onCameraIdle: () {
                 final String lat = _currentPosition.latitude.toStringAsFixed(5);
                 final String lng = _currentPosition.longitude.toStringAsFixed(5);
-                widget.onPositionSelected(_currentPosition, "Estanque fijado ($lat, $lng)");
+                widget.onPositionSelected(
+                  _currentPosition,
+                  "Estanque fijado ($lat, $lng)",
+                );
               },
             ),
 
-            // Pin Fijo en el Centro estilo Uber
+            // Pin Fijo en el Centro (Estilo Uber)
             Center(
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 38),
@@ -151,56 +167,48 @@ class _MapPickerWidgetState extends State<MapPickerWidget> {
               ),
             ),
 
-            // Botón estilo Uber para "Centrar en mi ubicación actual"
+            // Botón GPS
             Positioned(
               left: 14,
               bottom: 14,
-              child: Material(
-                color: Colors.white,
-                shape: const CircleBorder(),
+              child: FloatingActionButton.small(
+                heroTag: "btn_gps_location",
+                backgroundColor: Colors.white,
                 elevation: 4,
-                child: IconButton(
-                  icon: const Icon(Icons.my_location, color: Colors.blueAccent),
-                  tooltip: "Ubicación actual",
-                  onPressed: _getUserCurrentLocation,
-                ),
+                onPressed: _getUserCurrentLocation,
+                child: const Icon(Icons.my_location, color: Colors.blueAccent),
               ),
             ),
 
-            // Botones de Zoom (+ / -)
+            // Botones Zoom
             Positioned(
               right: 14,
               bottom: 14,
               child: Column(
                 children: [
-                  Material(
-                    color: Colors.white,
-                    shape: const CircleBorder(),
+                  FloatingActionButton.small(
+                    heroTag: "btn_zoom_in",
+                    backgroundColor: Colors.white,
                     elevation: 4,
-                    child: IconButton(
-                      icon: const Icon(Icons.add, color: Colors.blueAccent),
-                      onPressed: () => _mapController?.animateCamera(CameraUpdate.zoomIn()),
-                    ),
+                    onPressed: _zoomIn,
+                    child: const Icon(Icons.add, color: Colors.blueAccent),
                   ),
                   const SizedBox(height: 8),
-                  Material(
-                    color: Colors.white,
-                    shape: const CircleBorder(),
+                  FloatingActionButton.small(
+                    heroTag: "btn_zoom_out",
+                    backgroundColor: Colors.white,
                     elevation: 4,
-                    child: IconButton(
-                      icon: const Icon(Icons.remove, color: Colors.blueAccent),
-                      onPressed: () => _mapController?.animateCamera(CameraUpdate.zoomOut()),
-                    ),
+                    onPressed: _zoomOut,
+                    child: const Icon(Icons.remove, color: Colors.blueAccent),
                   ),
                 ],
               ),
             ),
 
-            // Indicador discreto mientras el GPS posiciona
             if (_isLoadingGPS)
               Positioned(
-                top: 50,
-                left: 14,
+                top: 10,
+                left: 10,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
